@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import fnmatch
+from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Any, Sequence
+from typing import Any
 
 from app.config import Settings
 
@@ -56,11 +57,9 @@ def collect_leaves(
     def allowed(path: str) -> bool:
         if any(fnmatch.fnmatchcase(path, pattern) for pattern in exclude_paths):
             return False
-        if include_paths and not any(
+        return not include_paths or any(
             fnmatch.fnmatchcase(path, pattern) for pattern in include_paths
-        ):
-            return False
-        return True
+        )
 
     def visit(value: Any, tokens: tuple[str | int, ...], path: str, depth: int) -> None:
         nonlocal total_chars

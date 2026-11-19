@@ -1,7 +1,12 @@
 import httpx
 import pytest
 
-from app.analyzer_client import AnalyzerClient, AnalyzerError, AnalyzerTimeout, AnalyzerUnavailable
+from app.analyzer_client import (
+    AnalyzerClient,
+    AnalyzerError,
+    AnalyzerTimeout,
+    AnalyzerUnavailable,
+)
 
 
 def transport(handler):

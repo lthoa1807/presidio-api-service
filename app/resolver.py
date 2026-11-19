@@ -7,7 +7,7 @@ then score, then allowlist priority.
 
 from __future__ import annotations
 
-from typing import Iterable, Mapping, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 
 from app.config import EntityConfig
 from app.context_gate import context_ok
