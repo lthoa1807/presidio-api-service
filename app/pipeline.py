@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import secrets
@@ -77,18 +78,25 @@ async def _analyze_value(ctx: _Context, text: str) -> list[Span]:
     if cached is not None:
         return cached
 
-    collected: list[Span] = []
-    for start, chunk in chunk_text(
+    chunks = chunk_text(
         text,
         chunk_size=ctx.settings.chunk_size,
         overlap=ctx.settings.chunk_overlap,
-    ):
-        spans = await ctx.analyzer.analyze(
-            chunk,
-            min_score=ctx.options.min_score,
-            entities=ctx.allowlist,
-            recognizers=ctx.recognizers,
-        )
+    )
+    chunk_spans = await asyncio.gather(
+        *[
+            ctx.analyzer.analyze(
+                chunk,
+                min_score=ctx.options.min_score,
+                entities=ctx.allowlist,
+                recognizers=ctx.recognizers,
+            )
+            for _, chunk in chunks
+        ]
+    )
+
+    collected: list[Span] = []
+    for (start, _), spans in zip(chunks, chunk_spans, strict=True):
         collected.extend(
             Span(
                 start=span.start + start,

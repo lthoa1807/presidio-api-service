@@ -72,9 +72,14 @@ async def _read_body(request: Request, settings: Settings, request_id: str):
         except ValueError:
             return None, _error(400, "invalid_json", "invalid content-length", request_id)
 
-    body = await request.body()
-    if len(body) > settings.max_body_bytes:
-        return None, _error(413, "payload_too_large", "body too large", request_id)
+    chunks: list[bytes] = []
+    total = 0
+    async for chunk in request.stream():
+        total += len(chunk)
+        if total > settings.max_body_bytes:
+            return None, _error(413, "payload_too_large", "body too large", request_id)
+        chunks.append(chunk)
+    body = b"".join(chunks)
 
     try:
         return json.loads(body), None

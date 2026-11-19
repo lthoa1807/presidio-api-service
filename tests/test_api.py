@@ -1,9 +1,10 @@
 import dataclasses
 
+import httpx
 from fastapi.testclient import TestClient
 
 import app.main as m
-from app.analyzer_client import AnalyzerUnavailable
+from app.analyzer_client import AnalyzerClient, AnalyzerUnavailable
 from app.config import load_settings
 from app.models import Span
 
@@ -88,6 +89,26 @@ def test_body_limit():
     )
 
 
+async def test_chunked_body_stops_reading_past_limit():
+    s = dataclasses.replace(load_settings(env={}), max_body_bytes=10)
+
+    class FakeRequest:
+        def __init__(self):
+            self.headers = {"content-type": "application/json"}
+
+        async def stream(self):
+            yield b'{"x": "'
+            yield b"a" * 50
+            raise AssertionError("body read past the limit")
+
+        async def body(self):
+            raise AssertionError("body must not be buffered before the limit check")
+
+    data, error = await m._read_body(FakeRequest(), s, "rid")
+    assert data is None
+    assert error.status_code == 413
+
+
 def test_api_key_auth():
     s = dataclasses.replace(load_settings(env={}), api_key="secret")
     c = client(FakeAnalyzer(), s)
@@ -100,5 +121,20 @@ def test_api_key_auth():
 
 def test_analyzer_down_is_503_without_payload():
     r = client(FakeAnalyzer(fail=True)).post("/v1/anonymize", json={"secret": "abc"})
+    assert r.status_code == 503
+    assert "abc" not in r.text
+
+
+def test_real_client_connect_error_maps_to_503():
+    def h(req):
+        raise httpx.ConnectError("refused")
+
+    analyzer = AnalyzerClient(
+        "http://x",
+        timeout_s=1,
+        concurrency=1,
+        client=httpx.AsyncClient(transport=httpx.MockTransport(h)),
+    )
+    r = client(analyzer).post("/v1/anonymize", json={"secret": "abc"})
     assert r.status_code == 503
     assert "abc" not in r.text

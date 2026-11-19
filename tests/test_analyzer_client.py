@@ -1,3 +1,5 @@
+import asyncio
+
 import httpx
 import pytest
 
@@ -82,3 +84,36 @@ async def test_health_false_on_error():
 
     c = AnalyzerClient("http://x", timeout_s=1, concurrency=1, client=transport(h))
     assert await c.health() is False
+
+
+async def test_connect_error_maps_to_unavailable_not_timeout():
+    calls = []
+
+    def h(req):
+        calls.append(1)
+        raise httpx.ConnectError("refused")
+
+    c = AnalyzerClient("http://x", timeout_s=1, concurrency=1, client=transport(h))
+    with pytest.raises(AnalyzerUnavailable):
+        await c.analyze("abcd", min_score=0.5, entities=[], recognizers=[])
+    assert len(calls) == 2
+
+
+async def test_semaphore_bounds_concurrent_analyzer_calls():
+    state = {"inflight": 0, "max": 0}
+
+    async def h(req):
+        state["inflight"] += 1
+        state["max"] = max(state["max"], state["inflight"])
+        await asyncio.sleep(0.01)
+        state["inflight"] -= 1
+        return httpx.Response(200, json=[])
+
+    c = AnalyzerClient("http://x", timeout_s=1, concurrency=2, client=transport(h))
+    await asyncio.gather(
+        *[
+            c.analyze("abcd", min_score=0.5, entities=[], recognizers=[])
+            for _ in range(6)
+        ]
+    )
+    assert state["max"] == 2

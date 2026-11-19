@@ -1,3 +1,5 @@
+import asyncio
+import dataclasses
 import json
 
 from app.config import load_settings
@@ -33,7 +35,9 @@ async def test_dedupes_identical_values_but_emits_finding_per_path():
 
 
 async def test_chunk_boundary_does_not_duplicate_entity():
-    text = "x" * 3995 + "a@b.com"
+    # 20 filler chars + email, chunk_size=25 puts the cut inside "user@".
+    text = "a" * 20 + "user@example.com"
+    settings = dataclasses.replace(S, chunk_size=25, chunk_overlap=10)
 
     class ChunkFake:
         def __init__(self):
@@ -41,14 +45,32 @@ async def test_chunk_boundary_does_not_duplicate_entity():
 
         async def analyze(self, text, *, min_score, entities, recognizers):
             self.calls.append(text)
-            i = text.find("a@b.com")
-            return [Span(i, i + 7, "EMAIL_ADDRESS", 1.0)] if i >= 0 else []
+            i = text.find("user@example.com")
+            return [Span(i, i + 16, "EMAIL_ADDRESS", 1.0)] if i >= 0 else []
 
     a = ChunkFake()
-    res = await process_payload({"x": text}, ProcessOptions(), S, a)
+    res = await process_payload({"x": text}, ProcessOptions(), settings, a)
+    assert len(a.calls) == 2
     assert len(res.findings) == 1
     assert res.findings[0].path == "$.x"
-    assert res.data["x"] == "x" * 3995 + "<EMAIL_ADDRESS>"
+    assert res.data["x"] == "a" * 20 + "<EMAIL_ADDRESS>"
+
+
+async def test_chunks_of_one_string_are_analyzed_concurrently():
+    text = "a" * 6000
+    state = {"inflight": 0, "max": 0}
+
+    class SlowFake:
+        async def analyze(self, text, *, min_score, entities, recognizers):
+            state["inflight"] += 1
+            state["max"] = max(state["max"], state["inflight"])
+            await asyncio.sleep(0.01)
+            state["inflight"] -= 1
+            return []
+
+    res = await process_payload({"x": text}, ProcessOptions(), S, SlowFake())
+    assert state["max"] == 2
+    assert res.data["x"] == text
 
 
 async def test_json_string_without_pii_is_byte_identical():

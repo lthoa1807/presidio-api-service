@@ -97,7 +97,7 @@ class AnalyzerClient:
             except (ValueError, KeyError, TypeError) as exc:
                 raise AnalyzerError("invalid analyzer response") from exc
 
-        if isinstance(last_error, (httpx.TimeoutException, httpx.TransportError)):
+        if isinstance(last_error, httpx.TimeoutException):
             raise AnalyzerTimeout("analyzer request failed") from last_error
         raise AnalyzerUnavailable("analyzer unavailable") from last_error
 

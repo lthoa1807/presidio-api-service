@@ -202,7 +202,12 @@ warning và bị `PII_*` ghi đè.
   `pseudonym`, mapping chỉ tồn tại trong bộ nhớ của một request.
 - `mode=hash` với salt rỗng không ổn định qua restart. Đặt
   `PII_ANONYMIZE_SALT` cố định nếu cần hash ổn định giữa các lần chạy.
-- Analyzer hiện chạy `gunicorn -w 1` nên xử lý tuần tự. Nếu cần throughput cao
-  hơn, tăng số worker của `presidio-analyzer` trong stack Presidio (ví dụ
-  `WORKERS=4`), rồi tăng `PII_ANALYZER_CONCURRENCY` tương ứng. Với payload lớn
-  (hàng trăm KB), nên gọi bất đồng bộ và chấp nhận độ trễ vài giây.
+- Analyzer hiện chạy `gunicorn -w 1` nên xử lý tuần tự. `PII_ANALYZER_CONCURRENCY`
+  giới hạn số lần gọi analyzer đồng thời: nó áp dụng giữa các request, và giữa
+  các chunk của **một chuỗi dài** (các chunk được gửi song song). Các string
+  khác nhau trong cùng một payload vẫn được xử lý tuần tự để giữ thứ tự
+  findings và token ổn định, nên payload gồm nhiều string ngắn không được
+  song song hóa bên trong request. Nếu cần throughput cao hơn, tăng số worker
+  của `presidio-analyzer` (ví dụ `WORKERS=4`) rồi tăng
+  `PII_ANALYZER_CONCURRENCY` tương ứng; với payload lớn (hàng trăm KB), nên
+  gọi bất đồng bộ và chấp nhận độ trễ vài giây.
