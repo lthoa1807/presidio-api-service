@@ -1,0 +1,116 @@
+entities:
+  - name: VN_CCCD
+    regex: '(?<!\d)\d{12}(?!\d)'
+    score: 0.6
+    require_context: true
+    context:
+      - cccd
+      - căn cước
+      - căn cước công dân
+      - cmnd
+      - chứng minh nhân dân
+      - định danh
+      - số định danh
+
+  - name: VN_CMND
+    regex: '(?<!\d)\d{9}(?!\d)'
+    score: 0.6
+    require_context: true
+    context:
+      - cmnd
+      - chứng minh nhân dân
+
+  - name: VN_PHONE_NUMBER
+    regex: '(?<!\d)(?:\+84|0)(?:2\d{9}|[35789]\d{8})(?!\d)'
+    score: 0.85
+    require_context: false
+    context:
+      - điện thoại
+      - sđt
+      - số điện thoại
+      - phone
+      - liên hệ
+
+  - name: VN_TAX_CODE
+    regex: '(?<!\d)\d{10}(?:[-\u2013]\d{3})?(?!\d)'
+    score: 0.6
+    require_context: true
+    context:
+      - mst
+      - mã số thuế
+      - tax
+
+  - name: VN_BANK_ACCOUNT
+    regex: '(?<!\d)\d{9,16}(?!\d)'
+    score: 0.6
+    require_context: true
+    context:
+      - stk
+      - số tài khoản
+      - tài khoản
+      - ngân hàng
+      - bank
+
+  - name: VN_PASSPORT
+    regex: '(?<![A-Z0-9])[A-Z]\d{7,8}(?!\d)'
+    score: 0.6
+    require_context: false
+    context:
+      - hộ chiếu
+      - passport
+
+  - name: VN_VEHICLE_PLATE
+    regex: '(?<!\w)\d{2}[A-Z]-?\d{4,5}(?:\.\d{2})?(?!\w)'
+    score: 0.6
+    require_context: false
+    context:
+      - biển số
+      - xe
+
+  - name: VN_NAME
+    regex: '\b(?:Nguyễn|Trần|Lê|Phạm|Hoàng|Huỳnh|Phan|Vũ|Võ|Đặng|Bùi|Đỗ|Hồ|Ngô|Dương|Lý|Đinh|Trịnh|Đoàn|Tô|Mai|Lâm|Phùng|Vương|Cao|Đào|Tạ|Hà|Trương|Lương)\b(?:\s+[A-ZÀ-Ỹ][a-zà-ỹ]+){1,3}'
+    score: 0.6
+    require_context: false
+    context: []
+
+  - name: VN_ADDRESS
+    regex: '(?:số\s+)?\d+[A-Za-z]?(?:[/-]\d+)?\s+(?:đường|phố|ngõ|ngách|hẻm)\s+[^,;\n]{1,60}'
+    score: 0.55
+    require_context: false
+    context:
+      - địa chỉ
+      - nơi ở
+      - thường trú
+
+  - name: VN_ADDRESS
+    regex: '(?:phường|xã|quận|huyện|tỉnh|thành phố|thị trấn|thôn|xóm|ấp)\s+[A-ZÀ-Ỹ0-9][^,;.\n]{0,40}'
+    score: 0.55
+    require_context: false
+    context:
+      - địa chỉ
+      - nơi ở
+      - thường trú
+
+entity_priority:
+  - VN_CCCD
+  - VN_CMND
+  - VN_PHONE_NUMBER
+  - VN_TAX_CODE
+  - VN_BANK_ACCOUNT
+  - VN_PASSPORT
+  - VN_VEHICLE_PLATE
+  - VN_NAME
+  - VN_ADDRESS
+  - EMAIL_ADDRESS
+  - CREDIT_CARD
+  - IP_ADDRESS
+  - URL
+
+exclude_keys:
+  - model
+  - role
+  - object
+  - finish_reason
+  - created
+  - system_fingerprint
+  - logprobs
