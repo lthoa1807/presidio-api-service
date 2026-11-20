@@ -1,17 +1,20 @@
 services:
   pii-api:
-    build: .
+    image: ghcr.io/lthoa1807/presidio-api-service:${PII_TAG:-latest}
     ports: ["8000:8000"]
     environment:
       PII_ANALYZER_URL: http://presidio-analyzer:3000
       PII_API_KEY: ${PII_API_KEY:-}
       PII_ANONYMIZE_SALT: ${PII_ANONYMIZE_SALT:-}
+      PII_LOG_LEVEL: ${PII_LOG_LEVEL:-info}
+    restart: unless-stopped
     networks: [presidio]
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request;urllib.request.urlopen('http://localhost:8000/healthz')"]
+      test: ["CMD-SHELL", "python -c \"import urllib.request;urllib.request.urlopen('http://localhost:8000/healthz')\""]
       interval: 15s
-      start_period: 90s
-      retries: 5
+      timeout: 5s
+      start_period: 10s
+      retries: 3
 
 networks:
   presidio:

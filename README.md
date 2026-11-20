@@ -15,9 +15,41 @@ Service cần network `presidio_default` (stack Presidio đang chạy) và analy
 truy cập được tại `http://presidio-analyzer:3000`.
 
 ```bash
-docker compose up -d --build
+docker compose pull && docker compose up -d
 curl -s http://localhost:8000/healthz
 # {"status":"ok","analyzer":"ok"}
+```
+
+Image được build và publish tự động bởi GitHub Actions
+(`.github/workflows/docker.yml`) lên GHCR mỗi khi push `master`, tag `latest`
++ `sha-<short>`. Compose chỉ pull image, không build tại chỗ.
+
+| Việc cần làm | Lệnh |
+| --- | --- |
+| Sửa code → push `master`, đợi CI xong | `docker compose pull && docker compose up -d` |
+| Chạy đúng một bản đã build | `PII_TAG=sha-<short> docker compose up -d` |
+| Chỉ đổi biến môi trường (`.env`, `docker-compose.yml`) | `docker compose up -d` (recreate) |
+| Container treo, không đổi code | `docker compose restart pii-api` |
+
+Kiểm tra bản đang chạy đúng code mới:
+
+```bash
+docker compose logs --tail=50 pii-api          # xem log khởi động
+curl -s http://localhost:8000/healthz          # {"status":"ok","analyzer":"ok"}
+docker exec security-api-pii-api-1 grep -c known_given_names /app/app/resolver.py
+```
+
+Nếu đổi network/port trong compose: `docker compose down && docker compose up -d`.
+Thiếu network sẽ báo lỗi ngay khi `up`:
+
+```bash
+docker network ls | grep presidio_default
+```
+
+Chạy dev trực tiếp (auto-reload, không Docker), trỏ analyzer ra host port 5002:
+
+```bash
+PII_ANALYZER_URL=http://localhost:5002 .venv/bin/uvicorn app.main:app --reload --port 8000
 ```
 
 Nếu Presidio chưa chạy, khởi động stack đó trước:
@@ -124,8 +156,9 @@ Cấu hình nằm tại `app/config/entities.yaml`.
 | `VN_TAX_CODE` | regex + context | MST `1234567890` hoặc `1234567890-001` |
 | `VN_BANK_ACCOUNT` | regex + context | 9–16 số, cần "stk", "số tài khoản", "ngân hàng" |
 | `VN_PASSPORT` | regex | 1 chữ + 7–8 số |
+| `VN_DATE_OF_BIRTH` | regex + context hẹp | Chỉ thay phần ngày/năm, giữ nhãn "sinh ngày"; context ±20 ký tự phía trước |
 | `VN_VEHICLE_PLATE` | regex | Biển số xe |
-| `VN_NAME` | heuristic | Họ phổ biến + 1–3 từ viết hoa |
+| `VN_NAME` | heuristic | Họ phổ biến + 1–3 từ viết hoa; tự ẩn tên gọi đứng riêng (vd. "Khang") khi đã thấy họ tên đầy đủ, kể cả khi tên đầy đủ nằm ở message khác (dùng chung pseudonym) |
 | `VN_ADDRESS` | heuristic | Số nhà + đường/phố, hoặc phường/xã/quận/huyện... |
 | `EMAIL_ADDRESS`, `CREDIT_CARD`, `IP_ADDRESS`, `URL` | Presidio built-in | Bật/tắt trong `entities.yaml` |
 
