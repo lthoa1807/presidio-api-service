@@ -81,9 +81,7 @@ async def test_json_string_without_pii_is_byte_identical():
 
 async def test_json_string_with_pii_is_recursed_and_stays_valid_json():
     a = FakeAnalyzer({"0901234567": [(0, 10, "VN_PHONE_NUMBER", 0.85)]})
-    res = await process_payload(
-        {"x": '{"phone":"0901234567"}'}, ProcessOptions(), S, a
-    )
+    res = await process_payload({"x": '{"phone":"0901234567"}'}, ProcessOptions(), S, a)
     assert json.loads(res.data["x"]) == {"phone": "<VN_PHONE_NUMBER>"}
     assert res.findings[0].path == "$.x#$.phone"
 
@@ -108,15 +106,16 @@ async def test_reference_by_given_name_in_later_string_is_redacted():
     )
     # The bare given name reuses the pseudonym of the full name.
     assert res.data["messages"][0]["content"] == "anh <VN_NAME_1> ở Quận 3"
-    assert res.data["messages"][1]["content"] == "Tại đây, anh <VN_NAME_1> đã cung cấp CCCD"
+    assert (
+        res.data["messages"][1]["content"]
+        == "Tại đây, anh <VN_NAME_1> đã cung cấp CCCD"
+    )
 
 
 async def test_given_name_before_full_name_is_still_redacted():
     full = "Tôi là Nguyễn Văn An"
     earlier = "cho anh An biết"
     a = FakeAnalyzer({full: [(7, 20, "VN_NAME", 0.6)]})
-    res = await process_payload(
-        {"a": earlier, "b": full}, ProcessOptions(), S, a
-    )
+    res = await process_payload({"a": earlier, "b": full}, ProcessOptions(), S, a)
     assert res.data["a"] == "cho anh <VN_NAME> biết"
     assert res.data["b"] == "Tôi là <VN_NAME>"

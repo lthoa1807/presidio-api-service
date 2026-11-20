@@ -37,13 +37,17 @@ class PseudonymState:
         return token
 
 
-def _token_for(entity_type: str, value: str, mode: str, salt: str, state: PseudonymState) -> str:
+def _token_for(
+    entity_type: str, value: str, mode: str, salt: str, state: PseudonymState
+) -> str:
     if mode == "replace":
         return f"<{entity_type}>"
     if mode == "pseudonym":
         return state.token(entity_type, value)
     if mode == "hash":
-        digest = hashlib.sha256((salt + "\x00" + value).encode("utf-8")).hexdigest()[:16]
+        digest = hashlib.sha256((salt + "\x00" + value).encode("utf-8")).hexdigest()[
+            :16
+        ]
         return f"<{entity_type}_{digest}>"
     raise ValueError(f"unsupported mode: {mode}")
 

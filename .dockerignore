@@ -1,0 +1,13 @@
+.git
+.github
+.venv
+__pycache__
+*.pyc
+.pytest_cache
+.ruff_cache
+.superpowers
+.opencode
+tests
+docs
+docker-compose*.yml
+.env

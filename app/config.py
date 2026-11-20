@@ -137,7 +137,9 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
     settings = Settings(
         analyzer_url=text("ANALYZER_URL", "http://presidio-analyzer:3000"),
         analyzer_timeout_s=_as_float(timeout_ms, "ANALYZER_TIMEOUT_MS") / 1000.0,
-        analyzer_concurrency=_as_int(text("ANALYZER_CONCURRENCY", "2"), "ANALYZER_CONCURRENCY"),
+        analyzer_concurrency=_as_int(
+            text("ANALYZER_CONCURRENCY", "2"), "ANALYZER_CONCURRENCY"
+        ),
         request_deadline_s=_as_float(deadline_ms, "REQUEST_DEADLINE_MS") / 1000.0,
         max_body_bytes=_as_int(text("MAX_BODY_BYTES", "5242880"), "MAX_BODY_BYTES"),
         max_strings=_as_int(text("MAX_STRINGS", "500"), "MAX_STRINGS"),
