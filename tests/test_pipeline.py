@@ -94,3 +94,29 @@ async def test_numbers_untouched_by_default():
     )
     assert res.data == {"n": 123, "f": 1.5}
     assert res.findings == []
+
+
+async def test_reference_by_given_name_in_later_string_is_redacted():
+    full = "anh Nguyễn Hoàng Minh Khang ở Quận 3"
+    later = "Tại đây, anh Khang đã cung cấp CCCD"
+    a = FakeAnalyzer({full: [(4, 27, "VN_NAME", 0.6)]})
+    res = await process_payload(
+        {"messages": [{"content": full}, {"content": later}]},
+        ProcessOptions(mode="pseudonym"),
+        S,
+        a,
+    )
+    # The bare given name reuses the pseudonym of the full name.
+    assert res.data["messages"][0]["content"] == "anh <VN_NAME_1> ở Quận 3"
+    assert res.data["messages"][1]["content"] == "Tại đây, anh <VN_NAME_1> đã cung cấp CCCD"
+
+
+async def test_given_name_before_full_name_is_still_redacted():
+    full = "Tôi là Nguyễn Văn An"
+    earlier = "cho anh An biết"
+    a = FakeAnalyzer({full: [(7, 20, "VN_NAME", 0.6)]})
+    res = await process_payload(
+        {"a": earlier, "b": full}, ProcessOptions(), S, a
+    )
+    assert res.data["a"] == "cho anh <VN_NAME> biết"
+    assert res.data["b"] == "Tôi là <VN_NAME>"

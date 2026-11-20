@@ -1,3 +1,4 @@
+from app.config import EntityConfig
 from app.models import Span
 from app.resolver import resolve
 
@@ -67,3 +68,48 @@ def test_non_overlapping_sorted_by_start():
         entities_by_name=E,
     )
     assert [s.start for s in out] == [0, 5]
+
+
+def test_infers_standalone_given_name_from_full_name():
+    text = "Nguyễn Văn An và anh An"
+    name = EntityConfig("VN_NAME", r"\S+", 0.6, False, ())
+    out = resolve(
+        text,
+        [Span(0, 13, "VN_NAME", 0.6)],
+        allowlist=["VN_NAME"],
+        min_score=0.5,
+        entities_by_name={"VN_NAME": name},
+    )
+    assert [(s.start, s.end, s.entity_type) for s in out] == [
+        (0, 13, "VN_NAME"),
+        (21, 23, "VN_NAME"),
+    ]
+
+
+def test_given_name_inference_is_case_sensitive():
+    text = "Nguyễn Văn An và an toàn"
+    name = EntityConfig("VN_NAME", r"\S+", 0.6, False, ())
+    out = resolve(
+        text,
+        [Span(0, 13, "VN_NAME", 0.6)],
+        allowlist=["VN_NAME"],
+        min_score=0.5,
+        entities_by_name={"VN_NAME": name},
+    )
+    assert [(s.start, s.end) for s in out] == [(0, 13)]
+
+
+def test_known_given_names_from_other_strings_share_the_full_name_key():
+    text = "anh Khang đã đến"
+    name = EntityConfig("VN_NAME", r"\S+", 0.6, False, ())
+    out = resolve(
+        text,
+        [],
+        allowlist=["VN_NAME"],
+        min_score=0.5,
+        entities_by_name={"VN_NAME": name},
+        known_given_names={"Khang": "Nguyễn Hoàng Minh Khang"},
+    )
+    assert [(s.start, s.end, s.value_key) for s in out] == [
+        (4, 9, "Nguyễn Hoàng Minh Khang")
+    ]

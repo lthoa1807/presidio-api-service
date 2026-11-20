@@ -21,3 +21,17 @@ def test_missing_context_rejected():
 def test_entity_without_require_context_always_ok():
     e = EntityConfig("VN_PHONE_NUMBER", r"\d{10}", 0.85, False, ())
     assert context_ok("0901234567", 0, 10, e) is True
+
+
+def test_context_can_be_limited_to_before_the_span():
+    e = EntityConfig(
+        "VN_DATE_OF_BIRTH",
+        r"\d{4}",
+        0.6,
+        True,
+        ("sinh ngày",),
+        context_window=10,
+        context_after=False,
+    )
+    assert context_ok("sinh ngày 1992", 10, 14, e) is True
+    assert context_ok("1992 sinh ngày", 0, 4, e) is False

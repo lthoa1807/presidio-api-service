@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import re
 import secrets
 from collections import Counter
 from collections.abc import Sequence
@@ -16,7 +17,7 @@ from app.chunker import chunk_text
 from app.config import EntityConfig, Settings
 from app.models import Span
 from app.recognizers import to_ad_hoc_recognizers
-from app.resolver import resolve
+from app.resolver import harvest_given_names, resolve
 from app.walker import Leaf, collect_leaves, set_value
 
 logger = logging.getLogger(__name__)
@@ -64,6 +65,25 @@ class _Context:
     by_type: Counter = field(default_factory=Counter)
     scanned: int = 0
     excluded_keys: frozenset[str] = frozenset()
+    given_names: dict[str, str] = field(default_factory=dict)
+
+
+def _seed_given_names(ctx: _Context, leaves: Sequence[Leaf]) -> dict[str, str]:
+    """Pre-scan every string for full names so a bare given name elsewhere
+    ("anh Khang") is redacted even when it is scanned before the full name."""
+    name_entity = ctx.entities_by_name.get("VN_NAME")
+    if name_entity is None or "VN_NAME" not in ctx.allowlist:
+        return {}
+    pattern = re.compile(name_entity.regex)
+    names: dict[str, str] = {}
+    for leaf in leaves:
+        spans = [
+            Span(match.start(), match.end(), "VN_NAME", name_entity.score)
+            for match in pattern.finditer(leaf.text)
+        ]
+        if spans:
+            names = harvest_given_names(leaf.text, spans, names)
+    return names
 
 
 def _child_path(base: str, key: str) -> str:
@@ -113,7 +133,9 @@ async def _analyze_value(ctx: _Context, text: str) -> list[Span]:
         allowlist=ctx.allowlist,
         min_score=ctx.options.min_score,
         entities_by_name=ctx.entities_by_name,
+        known_given_names=ctx.given_names,
     )
+    ctx.given_names = harvest_given_names(text, resolved, ctx.given_names)
     ctx.cache[text] = resolved
     return resolved
 
@@ -235,6 +257,7 @@ async def process_payload(
         include_paths=include_paths,
         exclude_paths=exclude_paths,
     )
+    ctx.given_names = _seed_given_names(ctx, leaves)
 
     for leaf in leaves:
         new_value = await _transform_text(ctx, leaf.text, leaf.path, 0)

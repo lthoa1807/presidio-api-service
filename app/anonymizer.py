@@ -62,7 +62,16 @@ def anonymize_text(
     # occurrence, then apply replacements right-to-left so offsets stay valid.
     ordered = sorted(spans, key=lambda s: s.start)
     prepared = [
-        (span, _token_for(span.entity_type, text[span.start : span.end], mode, salt, state))
+        (
+            span,
+            _token_for(
+                span.entity_type,
+                span.value_key or text[span.start : span.end],
+                mode,
+                salt,
+                state,
+            ),
+        )
         for span in ordered
     ]
     for span, token in reversed(prepared):

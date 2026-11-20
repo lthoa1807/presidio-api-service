@@ -32,6 +32,8 @@ class EntityConfig:
     require_context: bool
     context: tuple[str, ...]
     enabled: bool = True
+    context_window: int = 60
+    context_after: bool = True
 
 
 @dataclass(frozen=True)
@@ -108,6 +110,8 @@ def load_entities(
             require_context=bool(item.get("require_context", False)),
             context=tuple(item.get("context") or ()),
             enabled=bool(item.get("enabled", True)),
+            context_window=int(item.get("context_window", 60)),
+            context_after=bool(item.get("context_after", True)),
         )
         for item in data.get("entities", [])
     )

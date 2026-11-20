@@ -23,3 +23,11 @@ def test_entities_yaml_loads_priority_and_excludes():
     assert {"VN_CCCD", "VN_PHONE_NUMBER", "VN_ADDRESS"} <= names
     assert priority[0] == "VN_CCCD"
     assert "role" in exclude
+
+
+def test_date_of_birth_uses_narrow_before_only_context():
+    entities, _, _ = load_entities(Path("app/config/entities.yaml"))
+    dob = next(e for e in entities if e.name == "VN_DATE_OF_BIRTH")
+    assert dob.require_context is True
+    assert dob.context_window == 20
+    assert dob.context_after is False
