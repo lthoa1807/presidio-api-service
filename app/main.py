@@ -61,16 +61,23 @@ async def _read_body(request: Request, settings: Settings, request_id: str):
     content_type = request.headers.get("content-type", "").split(";")[0].strip().lower()
     if content_type != "application/json":
         return None, _error(
-            415, "unsupported_media_type", "content-type must be application/json", request_id
+            415,
+            "unsupported_media_type",
+            "content-type must be application/json",
+            request_id,
         )
 
     declared = request.headers.get("content-length")
     if declared is not None:
         try:
             if int(declared) > settings.max_body_bytes:
-                return None, _error(413, "payload_too_large", "body too large", request_id)
+                return None, _error(
+                    413, "payload_too_large", "body too large", request_id
+                )
         except ValueError:
-            return None, _error(400, "invalid_json", "invalid content-length", request_id)
+            return None, _error(
+                400, "invalid_json", "invalid content-length", request_id
+            )
 
     chunks: list[bytes] = []
     total = 0
@@ -115,7 +122,7 @@ def create_app(
     app.state.analyzer = analyzer
     health_cache: dict[str, Any] = {"at": 0.0, "ok": False}
 
-    def _options(request: Request):
+    def _options(request: Request, with_findings: bool = True):
         query = request.query_params
         mode = query.get("mode", "replace")
         if mode not in _MODES:
@@ -138,18 +145,20 @@ def create_app(
         if scan_numbers is None:
             return None, "scan_numbers must be a boolean"
 
-        include_findings = _bool_param(query.get("include_findings"), False)
-        if include_findings is None:
-            return None, "include_findings must be a boolean"
+        include_findings = False
+        if with_findings:
+            include_findings = _bool_param(query.get("include_findings"), False)
+            if include_findings is None:
+                return None, "include_findings must be a boolean"
 
         return (
-            ProcessOptions(
-                mode=mode, min_score=min_score, scan_numbers=scan_numbers
-            ),
+            ProcessOptions(mode=mode, min_score=min_score, scan_numbers=scan_numbers),
             include_findings,
         )
 
-    async def _handle(request: Request, detect_only: bool) -> JSONResponse:
+    async def _handle(request: Request, response_kind: str) -> JSONResponse:
+        # ``response_kind``: "anonymize" (data + metadata headers), "detect"
+        # (findings only) or "bare" (marked-up data and nothing else).
         request_id = _request_id(request)
 
         if settings.api_key:
@@ -157,7 +166,7 @@ def create_app(
             if not hmac.compare_digest(provided, settings.api_key):
                 return _error(401, "unauthorized", "invalid api key", request_id)
 
-        parsed = _options(request)
+        parsed = _options(request, with_findings=response_kind != "bare")
         if parsed[0] is None:
             return _error(422, "invalid_param", parsed[1], request_id)
         options, include_findings = parsed
@@ -173,7 +182,9 @@ def create_app(
                 timeout=settings.request_deadline_s,
             )
         except asyncio.TimeoutError:
-            return _error(504, "deadline_exceeded", "request deadline exceeded", request_id)
+            return _error(
+                504, "deadline_exceeded", "request deadline exceeded", request_id
+            )
         except PayloadLimitError as exc:
             return _error(413, exc.code, "payload limit exceeded", request_id)
         except AnalyzerTimeout:
@@ -194,11 +205,16 @@ def create_app(
             elapsed_ms,
         )
 
+        if response_kind == "bare":
+            # No wrapper, no stats, no findings, no metadata headers: the
+            # response body is only the marked-up copy of the input payload.
+            return JSONResponse(content=result.data)
+
         headers = {
             "X-Request-Id": request_id,
             "X-PII-Entities": str(result.stats["entities_found"]),
         }
-        if detect_only:
+        if response_kind == "detect":
             return JSONResponse(
                 content={
                     "findings": [asdict(finding) for finding in result.findings],
@@ -219,11 +235,15 @@ def create_app(
 
     @app.post("/v1/anonymize")
     async def anonymize(request: Request) -> JSONResponse:
-        return await _handle(request, detect_only=False)
+        return await _handle(request, response_kind="anonymize")
+
+    @app.post("/v1/anonymize/bare")
+    async def anonymize_bare(request: Request) -> JSONResponse:
+        return await _handle(request, response_kind="bare")
 
     @app.post("/v1/detect")
     async def detect(request: Request) -> JSONResponse:
-        return await _handle(request, detect_only=True)
+        return await _handle(request, response_kind="detect")
 
     @app.get("/healthz")
     async def healthz(request: Request) -> JSONResponse:

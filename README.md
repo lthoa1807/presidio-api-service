@@ -112,6 +112,27 @@ Add `?include_findings=true` to get a wrapper:
 }
 ```
 
+### `POST /v1/anonymize/bare`
+
+Same pipeline and query params as `/v1/anonymize`, but the response body is
+**only** the marked-up copy of the input payload: no `data` wrapper, no
+`findings`, no `stats`, and no metadata response headers
+(`X-Request-Id`, `X-PII-Entities`). `include_findings` is ignored here.
+
+```bash
+curl -s -X POST http://localhost:8000/v1/anonymize/bare \
+  -H 'content-type: application/json' \
+  -d '{"note": "gọi 0901234567"}'
+```
+
+Result:
+
+```json
+{"note": "gọi <VN_PHONE_NUMBER>"}
+```
+
+Errors keep the standard `{"error": {...}}` shape and HTTP status codes.
+
 ### `POST /v1/detect`
 
 Detect only: no `data`, no modification.
@@ -134,7 +155,7 @@ curl -s -X POST http://localhost:8000/v1/detect \
 | `min_score` | `0.0` – `1.0` | `0.5` |
 | `language` | `en` (the only supported value) | `en` |
 | `scan_numbers` | `true`/`false` — also scan JSON numbers | `false` |
-| `include_findings` | `true`/`false` — wrapper for `/v1/anonymize` | `false` |
+| `include_findings` | `true`/`false` — wrapper for `/v1/anonymize` (ignored by `/v1/anonymize/bare`) | `false` |
 
 Replacement modes:
 
@@ -227,6 +248,56 @@ and are overridden by `PII_*`.
 | `PII_ANONYMIZE_SALT` | empty |
 | `PII_LOG_LEVEL` | `info` |
 | `PII_CONFIG_PATH` | `app/config/entities.yaml` |
+
+## CI/CD
+
+GitHub Actions runs on every push to `master` and on pull requests.
+
+| Workflow | Trigger | What it does |
+| --- | --- | --- |
+| `.github/workflows/ci.yml` | push to `master`, PR, called by the release workflow | `ruff check`, `ruff format --check`, `pytest` on Python 3.10 and 3.11 |
+| `.github/workflows/docker.yml` | push to `master`, manual dispatch | runs CI, builds `ghcr.io/lthoa1807/presidio-api-service` (`latest`, `sha-<short>`, semver on tags), pushes it, then deploys |
+
+The image is never built if lint or tests fail. `sha-<short>` tags are kept so a
+rollback is one command.
+
+### Deploy job
+
+The `deploy` job is skipped until it is enabled. To turn it on:
+
+1. Register a self-hosted runner on the Docker host (the machine that already
+   runs `docker compose`):
+
+   ```bash
+   gh api -X POST /repos/lthoa1807/presidio-api-service/actions/runners/registration-token -q .token
+   ```
+
+   then follow the download/configure steps GitHub prints for that token
+   (labels: the default `self-hosted`, `linux` are enough) and install it as a
+   service.
+
+2. Set the repository variables and secrets:
+
+   ```bash
+   gh variable set DEPLOY_ENABLED --body true
+   gh variable set DEPLOY_PATH --body /path/to/security-api   # where docker-compose.yml lives
+   gh variable set DEPLOY_HEALTH_URL --body http://localhost:8000/healthz
+   gh secret set PII_API_KEY
+   gh secret set PII_ANONYMIZE_SALT
+   ```
+
+3. Optional: add a required reviewer to the `production` environment so a
+   deploy waits for approval.
+
+The deploy job logs in to GHCR, runs `docker compose pull && docker compose up -d`
+with the new `sha-<short>` tag, then polls `/healthz` and prints container logs
+if it never becomes healthy.
+
+### Rollback
+
+```bash
+PII_TAG=sha-<previous> docker compose up -d
+```
 
 ## Caveats
 

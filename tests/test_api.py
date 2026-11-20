@@ -52,6 +52,48 @@ def test_include_findings_wrapper():
     assert body["stats"]["entities_found"] == 1
 
 
+def test_anonymize_bare_returns_only_marked_up_data():
+    hits = {"john@x.com": [(0, 11, "EMAIL_ADDRESS", 1.0)]}
+    r = client(FakeAnalyzer(hits)).post(
+        "/v1/anonymize/bare", json={"m": "john@x.com", "n": 1}
+    )
+    assert r.status_code == 200
+    assert r.json() == {"m": "<EMAIL_ADDRESS>", "n": 1}
+    assert set(r.json()) == {"m", "n"}
+    assert "findings" not in r.json() and "stats" not in r.json()
+    assert "x-pii-entities" not in {k.lower() for k in r.headers}
+    assert "x-request-id" not in {k.lower() for k in r.headers}
+
+
+def test_anonymize_bare_ignores_include_findings():
+    hits = {"john@x.com": [(0, 11, "EMAIL_ADDRESS", 1.0)]}
+    r = client(FakeAnalyzer(hits)).post(
+        "/v1/anonymize/bare?include_findings=true", json={"m": "john@x.com"}
+    )
+    assert r.json() == {"m": "<EMAIL_ADDRESS>"}
+
+
+def test_anonymize_bare_keeps_validation_and_auth():
+    assert (
+        client(FakeAnalyzer()).post("/v1/anonymize/bare?mode=mask", json={}).status_code
+        == 422
+    )
+    s = dataclasses.replace(load_settings(env={}), api_key="secret")
+    c = client(FakeAnalyzer(), s)
+    assert c.post("/v1/anonymize/bare", json={}).status_code == 401
+    assert (
+        c.post(
+            "/v1/anonymize/bare", json={}, headers={"X-API-Key": "secret"}
+        ).status_code
+        == 200
+    )
+
+
+def test_anonymize_bare_analyzer_down_is_503():
+    r = client(FakeAnalyzer(fail=True)).post("/v1/anonymize/bare", json={"s": "abc"})
+    assert r.status_code == 503 and "abc" not in r.text
+
+
 def test_detect_does_not_modify_data():
     r = client(FakeAnalyzer({"john@x.com": [(0, 11, "EMAIL_ADDRESS", 1.0)]})).post(
         "/v1/detect", json={"m": "john@x.com"}
