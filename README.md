@@ -1,18 +1,19 @@
 # PII API
 
-Dịch vụ FastAPI nhận JSON bất kỳ (payload API, log, hội thoại LLM...), phát hiện
-thông tin cá nhân (PII) — bao gồm dữ liệu Việt Nam — và trả về JSON đã được
-anonymize **không thể khôi phục**.
+A FastAPI service that accepts arbitrary JSON (API payloads, logs, LLM
+conversations, ...), detects personally identifiable information (PII) —
+including Vietnamese data — and returns JSON with the PII anonymized in a way
+that **cannot be reversed**.
 
-Service này chỉ là lớp wrapper mỏng, gọi Presidio analyzer đang chạy sẵn. Nó
-không tự train model, không sửa stack Presidio hiện có, và không dùng
-`presidio-anonymizer` (việc thay thế được thực hiện trong tiến trình để xử lý
-overlap chính xác).
+This service is a thin wrapper that calls an already running Presidio analyzer.
+It does not train models, does not modify the existing Presidio stack, and does
+not use `presidio-anonymizer` (replacement happens in-process so overlaps are
+resolved precisely).
 
-## Chạy service
+## Running the service
 
-Service cần network `presidio_default` (stack Presidio đang chạy) và analyzer
-truy cập được tại `http://presidio-analyzer:3000`.
+The service needs the `presidio_default` network (the running Presidio stack)
+and an analyzer reachable at `http://presidio-analyzer:3000`.
 
 ```bash
 docker compose pull && docker compose up -d
@@ -20,52 +21,52 @@ curl -s http://localhost:8000/healthz
 # {"status":"ok","analyzer":"ok"}
 ```
 
-Image được build và publish tự động bởi GitHub Actions
-(`.github/workflows/docker.yml`) lên GHCR mỗi khi push `master`, tag `latest`
-+ `sha-<short>`. Compose chỉ pull image, không build tại chỗ.
+The image is built and published automatically by GitHub Actions
+(`.github/workflows/docker.yml`) to GHCR on every push to `master`, tagging
+`latest` + `sha-<short>`. Compose only pulls the image; it never builds locally.
 
-| Việc cần làm | Lệnh |
+| What you need to do | Command |
 | --- | --- |
-| Sửa code → push `master`, đợi CI xong | `docker compose pull && docker compose up -d` |
-| Chạy đúng một bản đã build | `PII_TAG=sha-<short> docker compose up -d` |
-| Chỉ đổi biến môi trường (`.env`, `docker-compose.yml`) | `docker compose up -d` (recreate) |
-| Container treo, không đổi code | `docker compose restart pii-api` |
+| Changed code → push `master`, wait for CI to finish | `docker compose pull && docker compose up -d` |
+| Run exactly one built revision | `PII_TAG=sha-<short> docker compose up -d` |
+| Only changed env vars (`.env`, `docker-compose.yml`) | `docker compose up -d` (recreate) |
+| Container hung, no code change | `docker compose restart pii-api` |
 
-Kiểm tra bản đang chạy đúng code mới:
+Verify the running container has the new code:
 
 ```bash
-docker compose logs --tail=50 pii-api          # xem log khởi động
+docker compose logs --tail=50 pii-api          # startup logs
 curl -s http://localhost:8000/healthz          # {"status":"ok","analyzer":"ok"}
 docker exec security-api-pii-api-1 grep -c known_given_names /app/app/resolver.py
 ```
 
-Nếu đổi network/port trong compose: `docker compose down && docker compose up -d`.
-Thiếu network sẽ báo lỗi ngay khi `up`:
+If you change the network/port in compose: `docker compose down && docker compose up -d`.
+A missing network fails immediately on `up`:
 
 ```bash
 docker network ls | grep presidio_default
 ```
 
-Chạy dev trực tiếp (auto-reload, không Docker), trỏ analyzer ra host port 5002:
+Run dev directly (auto-reload, no Docker) with the analyzer pointed at host port 5002:
 
 ```bash
 PII_ANALYZER_URL=http://localhost:5002 .venv/bin/uvicorn app.main:app --reload --port 8000
 ```
 
-Nếu Presidio chưa chạy, khởi động stack đó trước:
+If Presidio is not running yet, start that stack first:
 
 ```bash
-cd /home/hoalt/dockercomposer/Presidio
+cd /path/to/Presidio
 docker compose up -d
 ```
 
-Chạy test live (cần service đã lên):
+Run live tests (service must be up):
 
 ```bash
 PII_LIVE_URL=http://localhost:8000 pytest tests/live -v
 ```
 
-Chạy test offline (không cần Docker):
+Run offline tests (no Docker needed):
 
 ```bash
 python -m venv .venv && . .venv/bin/activate
@@ -77,7 +78,7 @@ pytest -q
 
 ### `POST /v1/anonymize`
 
-Trả về đúng cấu trúc JSON đầu vào, các giá trị PII được thay bằng token.
+Returns exactly the input JSON structure with PII values replaced by tokens.
 
 ```bash
 curl -s -X POST http://localhost:8000/v1/anonymize \
@@ -89,7 +90,7 @@ curl -s -X POST http://localhost:8000/v1/anonymize \
   }'
 ```
 
-Kết quả:
+Result:
 
 ```json
 {
@@ -99,7 +100,7 @@ Kết quả:
 }
 ```
 
-Thêm `?include_findings=true` để nhận wrapper:
+Add `?include_findings=true` to get a wrapper:
 
 ```json
 {
@@ -113,7 +114,7 @@ Thêm `?include_findings=true` để nhận wrapper:
 
 ### `POST /v1/detect`
 
-Chỉ phát hiện, không trả `data`, không làm thay đổi gì:
+Detect only: no `data`, no modification.
 
 ```bash
 curl -s -X POST http://localhost:8000/v1/detect \
@@ -123,51 +124,52 @@ curl -s -X POST http://localhost:8000/v1/detect \
 
 ### `GET /healthz`
 
-`200` khi analyzer OK, `503` khi không kết nối được analyzer.
+`200` when the analyzer is OK, `503` when it cannot be reached.
 
 ### Query params
 
-| Param | Giá trị | Mặc định |
+| Param | Values | Default |
 | --- | --- | --- |
 | `mode` | `replace`, `pseudonym`, `hash` | `replace` |
 | `min_score` | `0.0` – `1.0` | `0.5` |
-| `language` | `en` (chỉ hỗ trợ) | `en` |
-| `scan_numbers` | `true`/`false` — quét cả số JSON | `false` |
-| `include_findings` | `true`/`false` — wrapper cho `/v1/anonymize` | `false` |
+| `language` | `en` (the only supported value) | `en` |
+| `scan_numbers` | `true`/`false` — also scan JSON numbers | `false` |
+| `include_findings` | `true`/`false` — wrapper for `/v1/anonymize` | `false` |
 
-Chế độ thay thế:
+Replacement modes:
 
-- `replace`: `<EMAIL_ADDRESS>` — mọi lần xuất hiện giống nhau.
-- `pseudonym`: `<EMAIL_ADDRESS_1>`, `<EMAIL_ADDRESS_2>` — cùng giá trị trong
-  cùng request nhận cùng token, khác request thì khác token.
-- `hash`: `<EMAIL_ADDRESS_<16 hex>>` — HMAC-SHA256 với salt
-  `PII_ANONYMIZE_SALT`. Nếu salt rỗng, service dùng salt ngẫu nhiên mỗi lần
-  khởi động (log warning); hash sẽ không ổn định qua restart.
+- `replace`: `<EMAIL_ADDRESS>` — every occurrence is identical.
+- `pseudonym`: `<EMAIL_ADDRESS_1>`, `<EMAIL_ADDRESS_2>` — the same value within
+  one request gets the same token; a different request gets different tokens.
+- `hash`: `<EMAIL_ADDRESS_<16 hex>>` — HMAC-SHA256 with the salt
+  `PII_ANONYMIZE_SALT`. If the salt is empty, the service uses a random salt per
+  startup (logs a warning), so hashes are not stable across restarts.
 
-## Entity hỗ trợ
+## Supported entities
 
-Cấu hình nằm tại `app/config/entities.yaml`.
+Configuration lives in `app/config/entities.yaml`.
 
-| Entity | Nguồn | Ghi chú |
+| Entity | Source | Notes |
 | --- | --- | --- |
-| `VN_CCCD` | regex + context | 12 số, cần từ khoá như "cccd", "căn cước" trong ±60 ký tự |
-| `VN_CMND` | regex + context | 9 số, cần "cmnd", "chứng minh nhân dân" |
-| `VN_PHONE_NUMBER` | regex | Đầu `0`/`+84`, không cần context |
-| `VN_TAX_CODE` | regex + context | MST `1234567890` hoặc `1234567890-001` |
-| `VN_BANK_ACCOUNT` | regex + context | 9–16 số, cần "stk", "số tài khoản", "ngân hàng" |
-| `VN_PASSPORT` | regex | 1 chữ + 7–8 số |
-| `VN_DATE_OF_BIRTH` | regex + context hẹp | Chỉ thay phần ngày/năm, giữ nhãn "sinh ngày"; context ±20 ký tự phía trước |
-| `VN_VEHICLE_PLATE` | regex | Biển số xe |
-| `VN_NAME` | heuristic | Họ phổ biến + 1–3 từ viết hoa; tự ẩn tên gọi đứng riêng (vd. "Khang") khi đã thấy họ tên đầy đủ, kể cả khi tên đầy đủ nằm ở message khác (dùng chung pseudonym) |
-| `VN_ADDRESS` | heuristic | Số nhà + đường/phố, hoặc phường/xã/quận/huyện... |
-| `EMAIL_ADDRESS`, `CREDIT_CARD`, `IP_ADDRESS`, `URL` | Presidio built-in | Bật/tắt trong `entities.yaml` |
+| `VN_CCCD` | regex + context | 12 digits, needs a keyword such as "cccd" or "căn cước" within ±60 chars |
+| `VN_CMND` | regex + context | 9 digits, needs "cmnd" or "chứng minh nhân dân" |
+| `VN_PHONE_NUMBER` | regex | Starts with `0`/`+84`, no context needed |
+| `VN_TAX_CODE` | regex + context | Tax code `1234567890` or `1234567890-001` |
+| `VN_BANK_ACCOUNT` | regex + context | 9–16 digits, needs "stk", "số tài khoản", or "ngân hàng" |
+| `VN_PASSPORT` | regex | 1 letter + 7–8 digits |
+| `VN_DATE_OF_BIRTH` | regex + narrow context | Replaces only the date/year part, keeps the label "sinh ngày"; context within ±20 chars before it |
+| `VN_VEHICLE_PLATE` | regex | Vehicle license plate |
+| `VN_NAME` | heuristic | Common surname + 1–3 capitalized words; also masks standalone given names (e.g. "Khang") once a full name has been seen, including when the full name is in another message (shared pseudonym) |
+| `VN_ADDRESS` | heuristic | House number + street/road, or ward/commune/district/... |
+| `EMAIL_ADDRESS`, `CREDIT_CARD`, `IP_ADDRESS`, `URL` | Presidio built-in | Toggled in `entities.yaml` |
 
-Entity mặc định **không** dùng: `PERSON`, `LOCATION`, `ORGANIZATION`,
-`DATE_TIME` của model tiếng Anh vì chúng gán nhãn sai cho tiếng Việt.
+These entities are **not** used by default: the English model's `PERSON`,
+`LOCATION`, `ORGANIZATION`, and `DATE_TIME`, because they mislabel Vietnamese
+text.
 
-### Thêm entity built-in
+### Adding a built-in entity
 
-Thêm vào `entities.yaml`:
+Add it to `entities.yaml`:
 
 ```yaml
 entities:
@@ -178,69 +180,73 @@ entities:
     context: []
 ```
 
-hoặc bật entity có sẵn của Presidio bằng cách thêm tên vào `entity_priority` và
-không khai báo regex (chỉ áp dụng với entity built-in của Presidio). Nếu cần,
-khai báo regex như trên để dùng ad-hoc recognizer.
+Or enable a built-in Presidio entity by adding its name to `entity_priority`
+without declaring a regex (this only applies to Presidio built-in entities). If
+needed, declare a regex as above to use an ad-hoc recognizer.
 
-## Hành vi với JSON
+## Behavior with JSON
 
-- Cấu trúc và thứ tự key được giữ nguyên; chỉ giá trị string bị thay.
-- Số (`int`, `float`), bool, `null` giữ nguyên trừ khi `scan_numbers=true`.
-  Khi bật, số được quét như chuỗi và có thể bị thay bằng token string.
-- Key không bị quét (trừ khi key đó nằm trong `exclude_keys` — khi đó value bị
-  bỏ qua).
-- String là JSON lồng nhau (ví dụ `arguments` của tool call LLM) được đệ quy
-  tối đa 3 tầng. Nếu bên trong không có PII, string được giữ **nguyên byte**;
-  nếu có, string được serialize lại bằng `json.dumps(..., ensure_ascii=False)`.
-- Finding có path dạng `$.a`, `$.a[0]`, key đặc biệt là `$["a.b"]`. Với JSON
-  lồng nhau: `$.x#$.phone`.
+- Structure and key order are preserved; only string values are replaced.
+- Numbers (`int`, `float`), bools, and `null` are preserved unless
+  `scan_numbers=true`. When enabled, numbers are scanned as strings and may be
+  replaced by a string token.
+- Keys are not scanned (unless a key appears in `exclude_keys` — then its value
+  is skipped).
+- Strings containing nested JSON (e.g. a tool call's `arguments`) are recursed
+  up to 3 levels. If there is no PII inside, the string is kept **byte for byte**;
+  if there is, the string is re-serialized with `json.dumps(..., ensure_ascii=False)`.
+- Finding paths look like `$.a`, `$.a[0]`, with special keys as `$["a.b"]`. For
+  nested JSON: `$.x#$.phone`.
 
-## Giới hạn
+## Limits
 
-| Giới hạn | Mặc định | Env |
+| Limit | Default | Env |
 | --- | --- | --- |
-| Body tối đa | 5 MB | `PII_MAX_BODY_BYTES` |
-| Số string unique / request | 500 | `PII_MAX_STRINGS` |
-| Tổng ký tự quét | 512.000 | `PII_MAX_TOTAL_CHARS` |
-| Độ dài 1 string | 64.000 | `PII_MAX_TEXT_LEN` |
-| Độ sâu JSON | 32 | `PII_MAX_DEPTH` |
-| Deadline toàn request | 30 s | `PII_REQUEST_DEADLINE_MS` |
-| Timeout 1 lần gọi analyzer | 10 s | `PII_ANALYZER_TIMEOUT_MS` |
-| Concurrency gọi analyzer | 2 | `PII_ANALYZER_CONCURRENCY` |
+| Max body | 5 MB | `PII_MAX_BODY_BYTES` |
+| Unique strings per request | 500 | `PII_MAX_STRINGS` |
+| Total characters scanned | 512,000 | `PII_MAX_TOTAL_CHARS` |
+| Length of a single string | 64,000 | `PII_MAX_TEXT_LEN` |
+| JSON depth | 32 | `PII_MAX_DEPTH` |
+| Whole-request deadline | 30 s | `PII_REQUEST_DEADLINE_MS` |
+| Timeout for one analyzer call | 10 s | `PII_ANALYZER_TIMEOUT_MS` |
+| Analyzer call concurrency | 2 | `PII_ANALYZER_CONCURRENCY` |
 
-Chuỗi dài hơn `chunk_size` (4000) được cắt thành nhiều đoạn overlap 200 ký tự
-rồi ghép span lại, nên entity nằm vắt qua ranh giới vẫn được phát hiện một lần.
+Strings longer than `chunk_size` (4000) are split into chunks with 200-character
+overlap and the spans are merged back, so an entity spanning a boundary is still
+detected once.
 
-## Biến môi trường
+## Environment variables
 
-Tất cả dùng tiền tố `PII_`; tên không tiền tố vẫn được chấp nhận nhưng log
-warning và bị `PII_*` ghi đè.
+All use the `PII_` prefix; unprefixed names are still accepted but log a warning
+and are overridden by `PII_*`.
 
-| Biến | Mặc định |
+| Variable | Default |
 | --- | --- |
 | `PII_ANALYZER_URL` | `http://presidio-analyzer:3000` |
-| `PII_API_KEY` | rỗng (không auth). Nếu đặt, client phải gửi `X-API-Key` |
-| `PII_ANONYMIZE_SALT` | rỗng |
+| `PII_API_KEY` | empty (no auth). If set, clients must send `X-API-Key` |
+| `PII_ANONYMIZE_SALT` | empty |
 | `PII_LOG_LEVEL` | `info` |
 | `PII_CONFIG_PATH` | `app/config/entities.yaml` |
 
-## Cảnh báo
+## Caveats
 
-- Nhận diện tên và địa chỉ tiếng Việt là **heuristic**, không phải NER. Tên
-  hiếm, không dấu, hoặc viết thường có thể bị bỏ sót. Nếu cần độ chính xác cao
-  hơn, dùng thêm model NER tiếng Việt trong Presidio.
-- Service không log payload hay giá trị gốc; chỉ log `request_id`, số string
-  quét, số entity và thời gian xử lý.
-- Anonymize là một chiều. Với `replace`/`hash`, không có cách khôi phục. Với
-  `pseudonym`, mapping chỉ tồn tại trong bộ nhớ của một request.
-- `mode=hash` với salt rỗng không ổn định qua restart. Đặt
-  `PII_ANONYMIZE_SALT` cố định nếu cần hash ổn định giữa các lần chạy.
-- Analyzer hiện chạy `gunicorn -w 1` nên xử lý tuần tự. `PII_ANALYZER_CONCURRENCY`
-  giới hạn số lần gọi analyzer đồng thời: nó áp dụng giữa các request, và giữa
-  các chunk của **một chuỗi dài** (các chunk được gửi song song). Các string
-  khác nhau trong cùng một payload vẫn được xử lý tuần tự để giữ thứ tự
-  findings và token ổn định, nên payload gồm nhiều string ngắn không được
-  song song hóa bên trong request. Nếu cần throughput cao hơn, tăng số worker
-  của `presidio-analyzer` (ví dụ `WORKERS=4`) rồi tăng
-  `PII_ANALYZER_CONCURRENCY` tương ứng; với payload lớn (hàng trăm KB), nên
-  gọi bất đồng bộ và chấp nhận độ trễ vài giây.
+- Vietnamese name and address detection is **heuristic**, not NER. Rare,
+  unaccented, or lowercase names can be missed. If you need higher accuracy, add
+  a Vietnamese NER model to Presidio.
+- The service does not log payloads or original values; it only logs
+  `request_id`, the number of strings scanned, the number of entities, and the
+  processing time.
+- Anonymization is one-way. With `replace`/`hash` there is no way to recover the
+  original. With `pseudonym`, the mapping exists only in the memory of a single
+  request.
+- `mode=hash` with an empty salt is not stable across restarts. Set a fixed
+  `PII_ANONYMIZE_SALT` if you need stable hashes between runs.
+- The analyzer currently runs `gunicorn -w 1`, so it processes sequentially.
+  `PII_ANALYZER_CONCURRENCY` caps the number of concurrent analyzer calls: it
+  applies across requests and across the chunks of **one long string** (chunks
+  are sent in parallel). Different strings within the same payload are still
+  processed sequentially so findings order and tokens stay stable, so a payload
+  of many short strings is not parallelized inside a request. If you need more
+  throughput, raise the `presidio-analyzer` worker count (e.g. `WORKERS=4`) and
+  raise `PII_ANALYZER_CONCURRENCY` accordingly; for large payloads (hundreds of
+  KB), call it asynchronously and accept a few seconds of latency.
